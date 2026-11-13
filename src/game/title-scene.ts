@@ -82,7 +82,7 @@ export class TitleScene {
     r.toneMappingExposure = 1.05;
     r.outputColorSpace = THREE.SRGBColorSpace;
     r.shadowMap.enabled = true;
-    r.shadowMap.type = THREE.PCFSoftShadowMap;
+    r.shadowMap.type = THREE.PCFShadowMap;
     this.renderer = r;
     this.scene.fog = new THREE.FogExp2(0xd9a670, 0.0085);
     this.build();
@@ -156,7 +156,7 @@ export class TitleScene {
     const rocks = new THREE.InstancedMesh(rockGeo, rockMat, 46);
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), sc = new THREE.Vector3(), p = new THREE.Vector3();
     for (let i = 0; i < rocks.count; i++) {
-      const a = Math.random() * Math.PI * 2, d = 7 + Math.random() * 30;
+      const a = Math.random() * Math.PI * 2, d = 14 + Math.random() * 26;
       p.set(Math.cos(a) * d, 0, Math.sin(a) * d);
       const size = 0.12 + Math.random() * (d > 15 ? 1.1 : 0.45);
       sc.set(size, size, size); p.y = -size * 0.25;
@@ -175,7 +175,7 @@ export class TitleScene {
     const g1 = new THREE.InstancedMesh(card, grassMat, grassCount);
     const g2 = new THREE.InstancedMesh(card2, grassMat, grassCount);
     for (let i = 0; i < grassCount; i++) {
-      const a = Math.random() * Math.PI * 2, d = 6.5 + Math.pow(Math.random(), 0.7) * 45;
+      const a = Math.random() * Math.PI * 2, d = 15 + Math.pow(Math.random(), 0.7) * 40;
       p.set(Math.cos(a) * d, 0, Math.sin(a) * d);
       const h = 0.35 + Math.random() * 0.7;
       sc.set(h * (0.8 + Math.random() * 0.6), h, 1);
