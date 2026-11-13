@@ -73,6 +73,7 @@ export class TitleScene {
   private w = 1;
   private h = 1;
   private fadeVal = "";
+  private skyReady: Promise<void> = Promise.resolve();
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -108,7 +109,8 @@ export class TitleScene {
     const loader = new THREE.TextureLoader();
 
     // Golden-hour panorama: background and reflections on the paint.
-    loader.load(skyUrl, (sky) => {
+    this.skyReady = new Promise<void>((done) => loader.load(skyUrl, (sky) => {
+      done();
       if (this.disposed) { sky.dispose(); return; }
       sky.colorSpace = THREE.SRGBColorSpace;
       sky.mapping = THREE.EquirectangularReflectionMapping;
@@ -120,7 +122,7 @@ export class TitleScene {
       s.environment = env;
       s.environmentIntensity = 0.85;
       this.own.push(sky, env);
-    });
+    }, undefined, () => done()));
 
     // Sun + sky fill.
     const sun = new THREE.DirectionalLight(0xffc98a, 3.2);
@@ -230,6 +232,8 @@ export class TitleScene {
     });
     for (const m of lite.values()) this.own.push(m);
     this.scene.add(group);
+    await this.skyReady; // the environment map changes every car shader
+    if (this.disposed) return;
     // Compile every shader and upload every texture now, not when a car first
     // enters the frame mid-shot.
     try { await this.renderer.compileAsync(this.scene, this.camera); } catch { /* falls back to lazy compile */ }
