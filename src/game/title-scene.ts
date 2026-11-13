@@ -135,7 +135,7 @@ export class TitleScene {
     });
     const groundGeo = new THREE.CircleGeometry(120, 96);
     // gentle undulation so it reads as terrain, flat where the cars park
-    const pos = groundGeo.attributes.position as THREE.BufferAttribute;
+    const pos = groundGeo.attributes["position"] as THREE.BufferAttribute;
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i), y = pos.getY(i), d = Math.hypot(x, y);
       const lift = Math.max(0, d - 14) / 40;
@@ -149,7 +149,7 @@ export class TitleScene {
 
     // Rocks.
     const rockGeo = new THREE.IcosahedronGeometry(1, 1);
-    const rp = rockGeo.attributes.position as THREE.BufferAttribute;
+    const rp = rockGeo.attributes["position"] as THREE.BufferAttribute;
     for (let i = 0; i < rp.count; i++) { const k = 0.75 + Math.random() * 0.5; rp.setXYZ(i, rp.getX(i) * k, rp.getY(i) * k * 0.7, rp.getZ(i) * k); }
     rockGeo.computeVertexNormals();
     const rockMat = new THREE.MeshStandardMaterial({ map: dirt, color: 0xb7a58e, roughness: 0.92, flatShading: true });
@@ -230,9 +230,9 @@ export class TitleScene {
     if (this.disposed) return;
     this.raf = requestAnimationFrame(this.loop);
     if (!this.shotStart) this.shotStart = now;
-    let shot = SHOTS[this.shot];
+    let shot = SHOTS[this.shot]!;
     let t = (now - this.shotStart) / 1000 / shot.dur;
-    if (t >= 1) { this.shot = (this.shot + 1) % SHOTS.length; this.shotStart = now; shot = SHOTS[this.shot]; t = 0; }
+    if (t >= 1) { this.shot = (this.shot + 1) % SHOTS.length; this.shotStart = now; shot = SHOTS[this.shot]!; t = 0; }
     // fade to black around each cut
     if (this.fade) {
       const secs = t * shot.dur, left = shot.dur - secs;
