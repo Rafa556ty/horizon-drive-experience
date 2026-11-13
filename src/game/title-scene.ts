@@ -4,17 +4,28 @@ import * as THREE from "three";
 import skyUrl from "@/assets/title/title-sky.jpg";
 import dirtUrl from "@/assets/title/title-dirt.jpg";
 import { loadCar, type ModelKey } from "./models3d";
+import { AdaptiveResolution, phoneProfile } from "./quality";
 
 type Shot = { from: THREE.Vector3; to: THREE.Vector3; lookFrom: THREE.Vector3; lookTo: THREE.Vector3; fov: number; dur: number };
 const v = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 
+type Spot = { key: ModelKey; x: number; z: number; yaw: number; heavy?: boolean; lowKey?: ModelKey };
 /** Where each car is parked (metres) and which way it points (yaw, radians). */
-const PARKED: { key: ModelKey; x: number; z: number; yaw: number; heavy?: boolean }[] = [
+const PARKED: Spot[] = [
   { key: "revuelto", x: 0, z: 0, yaw: Math.PI + 0.35 },
   { key: "svj", x: -3.6, z: -1.6, yaw: Math.PI + 0.75 },
-  { key: "chiron", x: 3.7, z: -1.2, yaw: Math.PI - 0.2 },
+  // weak phones park the texture-free Pagani Huayra here instead of the Chiron
+  { key: "chiron", x: 3.7, z: -1.2, yaw: Math.PI - 0.2, lowKey: "huayra" },
   { key: "laferrari", x: -0.6, z: -5.2, yaw: Math.PI + 1.25, heavy: true },
 ];
+
+/** Cars parked on the title screen for this device class. */
+export function titleLineup(low: boolean): Spot[] {
+  return PARKED.filter((s) => !(low && s.heavy)).map((s) => (low && s.lowKey ? { ...s, key: s.lowKey } : s));
+}
+
+/** Weak phones draw the title at 30 fps: steady pacing reads smoother than a jittery 40. */
+export const LOW_FRAME_MS = 1000 / 30 - 4;
 
 // The sun in the panorama sits ~60% across the image, just above the horizon.
 const SUN_DIR = v(0.8, 0.12, 0.58).normalize();
@@ -54,22 +65,38 @@ export class TitleScene {
   private dust!: THREE.Points;
   private own: { dispose(): void }[] = [];
   private readyFired = false;
-  private carsShown = 0;
+  private carsReady = false;
   private low: boolean;
+  private quality = new AdaptiveResolution();
+  private baseDpr = 1;
+  private lastRender = 0;
+  private w = 1;
+  private h = 1;
+  private fadeVal = "";
+  private skyReady: Promise<void> = Promise.resolve();
 
   constructor(
     private canvas: HTMLCanvasElement,
     private fade: HTMLElement | null,
     private onReady: () => void,
   ) {
-    this.low = navigator.maxTouchPoints > 0 && ((navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 4) <= 4;
-    const r = new THREE.WebGLRenderer({ canvas, antialias: !this.low, powerPreference: "high-performance" });
-    r.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.low ? 1.25 : 2));
+    this.low = phoneProfile({
+      userAgent: navigator.userAgent,
+      memory: (navigator as Navigator & { deviceMemory?: number }).deviceMemory,
+      cores: navigator.hardwareConcurrency || 4,
+      touch: navigator.maxTouchPoints > 0,
+    });
+    const r = new THREE.WebGLRenderer({ canvas, antialias: !this.low, powerPreference: "high-performance", stencil: false });
+    this.baseDpr = Math.min(window.devicePixelRatio || 1, this.low ? 1 : 2);
+    r.setPixelRatio(this.baseDpr);
     r.toneMapping = THREE.ACESFilmicToneMapping;
     r.toneMappingExposure = 1.05;
     r.outputColorSpace = THREE.SRGBColorSpace;
-    r.shadowMap.enabled = true;
+    // Phones: the blob contact shadows ground the cars; no sun shadow pass.
+    r.shadowMap.enabled = !this.low;
     r.shadowMap.type = THREE.PCFShadowMap;
+    // Nothing that casts a shadow moves, so the shadow map is drawn once.
+    r.shadowMap.autoUpdate = false;
     this.renderer = r;
     this.scene.fog = new THREE.FogExp2(0xd9a670, 0.0085);
     this.build();
@@ -82,7 +109,8 @@ export class TitleScene {
     const loader = new THREE.TextureLoader();
 
     // Golden-hour panorama: background and reflections on the paint.
-    loader.load(skyUrl, (sky) => {
+    this.skyReady = new Promise<void>((done) => loader.load(skyUrl, (sky) => {
+      done();
       if (this.disposed) { sky.dispose(); return; }
       sky.colorSpace = THREE.SRGBColorSpace;
       sky.mapping = THREE.EquirectangularReflectionMapping;
@@ -94,13 +122,13 @@ export class TitleScene {
       s.environment = env;
       s.environmentIntensity = 0.85;
       this.own.push(sky, env);
-    });
+    }, undefined, () => done()));
 
     // Sun + sky fill.
     const sun = new THREE.DirectionalLight(0xffc98a, 3.2);
     sun.position.copy(SUN_DIR).multiplyScalar(40);
-    sun.castShadow = true;
-    const sz = this.low ? 1024 : 2048;
+    sun.castShadow = !this.low;
+    const sz = 2048;
     sun.shadow.mapSize.set(sz, sz);
     Object.assign(sun.shadow.camera, { left: -12, right: 12, top: 12, bottom: -12, near: 1, far: 90 });
     sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.02;
@@ -113,14 +141,15 @@ export class TitleScene {
     const dirt = loader.load(dirtUrl);
     dirt.colorSpace = THREE.SRGBColorSpace;
     dirt.wrapS = dirt.wrapT = THREE.RepeatWrapping; dirt.repeat.set(26, 26);
-    dirt.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
-    const bump = loader.load(dirtUrl); bump.wrapS = bump.wrapT = THREE.RepeatWrapping; bump.repeat.set(26, 26);
+    dirt.anisotropy = Math.min(this.low ? 4 : 16, this.renderer.capabilities.getMaxAnisotropy());
+    const bump = this.low ? null : loader.load(dirtUrl);
+    if (bump) { bump.wrapS = bump.wrapT = THREE.RepeatWrapping; bump.repeat.set(26, 26); }
     const fadeTex = radialTexture([[0, "#fff"], [0.55, "#fff"], [1, "#000"]]);
     const groundMat = new THREE.MeshStandardMaterial({
       map: dirt, bumpMap: bump, bumpScale: 1.4, roughness: 0.97, metalness: 0,
       color: 0xe6c49a, alphaMap: fadeTex, transparent: true, depthWrite: true,
     });
-    const groundGeo = new THREE.CircleGeometry(120, 96);
+    const groundGeo = new THREE.CircleGeometry(120, this.low ? 48 : 96);
     // gentle undulation so it reads as terrain, flat where the cars park
     const pos = groundGeo.attributes["position"] as THREE.BufferAttribute;
     for (let i = 0; i < pos.count; i++) {
@@ -132,10 +161,11 @@ export class TitleScene {
     const ground = new THREE.Mesh(groundGeo, groundMat);
     ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true;
     s.add(ground);
-    this.own.push(dirt, bump, fadeTex, groundMat, groundGeo);
+    this.own.push(dirt, fadeTex, groundMat, groundGeo);
+    if (bump) this.own.push(bump);
 
     // Rocks.
-    const rockGeo = new THREE.IcosahedronGeometry(1, 3);
+    const rockGeo = new THREE.IcosahedronGeometry(1, this.low ? 1 : 3);
     const rp = rockGeo.attributes["position"] as THREE.BufferAttribute;
     for (let i = 0; i < rp.count; i++) { const k = 0.88 + Math.random() * 0.24; rp.setXYZ(i, rp.getX(i) * k, rp.getY(i) * k * 0.45, rp.getZ(i) * k); }
     rockGeo.computeVertexNormals();
@@ -150,11 +180,11 @@ export class TitleScene {
       q.setFromEuler(e.set(Math.random(), Math.random() * 6, Math.random()));
       rocks.setMatrixAt(i, m.compose(p, q, sc));
     }
-    rocks.castShadow = rocks.receiveShadow = true; s.add(rocks);
+    rocks.castShadow = rocks.receiveShadow = !this.low; s.add(rocks);
     this.own.push(rockGeo, rockMat);
 
     // Floating dust in the sunlight.
-    const dustCount = this.low ? 160 : 360;
+    const dustCount = this.low ? 90 : 360;
     const dp = new Float32Array(dustCount * 3);
     for (let i = 0; i < dustCount; i++) { dp[i * 3] = (Math.random() - 0.5) * 26; dp[i * 3 + 1] = Math.random() * 3.5; dp[i * 3 + 2] = (Math.random() - 0.5) * 26; }
     const dustGeo = new THREE.BufferGeometry(); dustGeo.setAttribute("position", new THREE.BufferAttribute(dp, 3));
@@ -169,25 +199,72 @@ export class TitleScene {
     const blobGeo = new THREE.PlaneGeometry(2.6, 5.4);
     this.own.push(blob, blobMat, blobGeo);
 
-    // The game's cars, parked. Shared cached templates — never dispose them here.
-    for (const spot of PARKED) {
-      if (spot.heavy && this.low) continue;
-      loadCar(spot.key).then((tpl) => {
-        if (this.disposed) return;
-        const car = tpl.clone(true);
-        car.position.set(spot.x, 0, spot.z);
-        car.rotation.y = spot.yaw;
-        car.traverse((o) => { if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-        const sh = new THREE.Mesh(blobGeo, blobMat);
-        sh.rotation.x = -Math.PI / 2; sh.rotation.z = -spot.yaw; sh.position.set(spot.x, 0.02, spot.z);
-        s.add(sh, car);
-        this.carsShown++;
-      }).catch((err) => console.warn("title car", spot.key, err));
+    // The game's cars, parked. Shared cached templates: never dispose them here.
+    // All of them are loaded, added and uploaded to the GPU before the first shot
+    // fades in, so nothing pops in or hitches while the camera moves.
+    void this.loadCars(blobGeo, blobMat);
+  }
+
+  private async loadCars(blobGeo: THREE.BufferGeometry, blobMat: THREE.Material) {
+    const lineup = titleLineup(this.low);
+    const loaded = await Promise.all(
+      lineup.map((spot) => loadCar(spot.key).catch((err) => { console.warn("title car", spot.key, err); return null; })),
+    );
+    if (this.disposed) return;
+    const lite = new Map<THREE.Material, THREE.Material>();
+    const group = new THREE.Group();
+    lineup.forEach((spot, i) => {
+      const tpl = loaded[i];
+      if (!tpl) return;
+      const car = tpl.clone(true);
+      car.position.set(spot.x, 0, spot.z);
+      car.rotation.y = spot.yaw;
+      car.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh) return;
+        m.castShadow = !this.low;
+        m.receiveShadow = !this.low;
+        if (this.low) m.material = this.liteMaterial(m.material, lite);
+      });
+      const sh = new THREE.Mesh(blobGeo, blobMat);
+      sh.rotation.x = -Math.PI / 2; sh.rotation.z = -spot.yaw; sh.position.set(spot.x, 0.02, spot.z);
+      group.add(sh, car);
+    });
+    for (const m of lite.values()) this.own.push(m);
+    this.scene.add(group);
+    await this.skyReady; // the environment map changes every car shader
+    if (this.disposed) return;
+    // Compile every shader and upload every texture now, not when a car first
+    // enters the frame mid-shot.
+    try { await this.renderer.compileAsync(this.scene, this.camera); } catch { /* falls back to lazy compile */ }
+    if (this.disposed) return;
+    const culled: THREE.Object3D[] = [];
+    this.scene.traverse((o) => { if (o.frustumCulled) { culled.push(o); o.frustumCulled = false; } });
+    this.renderer.shadowMap.needsUpdate = true;
+    this.renderer.render(this.scene, this.camera);
+    for (const o of culled) o.frustumCulled = true;
+    this.carsReady = true;
+  }
+
+  /** Phones: clearcoat/specular lobes double fragment cost; a standard PBR copy looks the same here. */
+  private liteMaterial(mat: THREE.Material | THREE.Material[], cache: Map<THREE.Material, THREE.Material>): THREE.Material | THREE.Material[] {
+    if (Array.isArray(mat)) return mat.map((x) => this.liteMaterial(x, cache) as THREE.Material);
+    if (!(mat instanceof THREE.MeshPhysicalMaterial)) return mat;
+    let next = cache.get(mat);
+    if (!next) {
+      const std = new THREE.MeshStandardMaterial();
+      THREE.MeshStandardMaterial.prototype.copy.call(std, mat);
+      std.roughness = Math.max(0.12, mat.roughness * (1 - 0.35 * mat.clearcoat));
+      std.name = mat.name;
+      std.forceSinglePass = true;
+      cache.set(mat, (next = std));
     }
+    return next;
   }
 
   resize(w: number, h: number) {
-    this.renderer.setSize(Math.max(1, w), Math.max(1, h), false);
+    this.w = Math.max(1, w); this.h = Math.max(1, h);
+    this.renderer.setSize(this.w, this.h, false);
     this.camera.aspect = Math.max(1, w) / Math.max(1, h);
     this.camera.updateProjectionMatrix();
   }
@@ -200,6 +277,17 @@ export class TitleScene {
   private loop(now: number) {
     if (this.disposed) return;
     this.raf = requestAnimationFrame(this.loop);
+    if (this.low && this.lastRender && now - this.lastRender < LOW_FRAME_MS) return;
+    if (this.low && this.lastRender && this.quality.sample((now - this.lastRender) / 1000, document.hidden)) {
+      this.renderer.setPixelRatio(this.baseDpr * this.quality.scale);
+      this.renderer.setSize(this.w, this.h, false);
+    }
+    this.lastRender = now;
+    // Hold on black until every car is on the GPU; the first shot then starts fresh.
+    if (!this.carsReady) {
+      if (this.fade && this.fadeVal !== "1") { this.fadeVal = "1"; this.fade.style.opacity = "1"; }
+      return;
+    }
     if (!this.shotStart) this.shotStart = now;
     let shot = SHOTS[this.shot]!;
     let t = (now - this.shotStart) / 1000 / shot.dur;
@@ -208,7 +296,8 @@ export class TitleScene {
     // fade to black around each cut
     if (this.fade) {
       const secs = t * shot.dur, left = shot.dur - secs;
-      this.fade.style.opacity = String(Math.max(0, 1 - Math.min(secs, left) / 0.7));
+      const o = Math.max(0, 1 - Math.min(secs, left) / 0.7).toFixed(2);
+      if (o !== this.fadeVal) { this.fadeVal = o; this.fade.style.opacity = o; }
     }
     const k = ease(t);
     const breathe = now / 1000;
@@ -222,7 +311,7 @@ export class TitleScene {
     this.dust.rotation.y = breathe * 0.012;
     this.dust.position.y = Math.sin(breathe * 0.2) * 0.15;
     this.renderer.render(this.scene, this.camera);
-    if (!this.readyFired && this.carsShown > 0 && this.scene.background) { this.readyFired = true; this.onReady(); }
+    if (!this.readyFired) { this.readyFired = true; this.onReady(); }
   }
 
   dispose() {
