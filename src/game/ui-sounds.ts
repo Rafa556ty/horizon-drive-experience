@@ -100,6 +100,13 @@ class UiSounds {
     this.fadeRaf = requestAnimationFrame(step);
   }
 
+  stopAll() {
+    this.wantMusic = false;
+    clearTimeout(this.stopTimer);
+    cancelAnimationFrame(this.fadeRaf);
+    this.music?.pause();
+  }
+
   /** Short soft tick for menu buttons. */
   click() {
     if (this.muted) return;
@@ -154,7 +161,7 @@ class UiSounds {
   }
 }
 
-// One instance for the page's lifetime, even across dev hot reloads, so an old
-// copy can never keep the menu music playing during a race.
-const g = globalThis as typeof globalThis & { __uiSounds?: UiSounds };
-export const uiSounds: UiSounds = g.__uiSounds ?? (g.__uiSounds = new UiSounds());
+export const uiSounds = new UiSounds();
+// Dev hot reloads create a new instance; silence the old one so its music
+// can never keep playing during a race.
+if (import.meta.hot) import.meta.hot.dispose(() => uiSounds.stopAll());

@@ -49,6 +49,7 @@ import { CarStore } from '@/components/CarStore';
 import { SpeedCluster } from '@/components/SpeedCluster';
 import { TitleScreen } from "@/components/TitleScreen";
 import { uiSounds, wantsMenuMusic } from "@/game/ui-sounds";
+import { phoneProfile } from "@/game/quality";
 import { GameAudio } from "@/game/audio";
 import {
   MAX_SPEED,
@@ -189,7 +190,16 @@ export function RacingGame() {
   const [muted, setMuted] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [showTitle, setShowTitle] = useState(true);
-  const closeTitle = useCallback(() => setShowTitle(false), []);
+  // Weak phones: the race scene starts loading only once the title's cars are
+  // ready (or the title is closed), so both never fight for the phone at once.
+  const titleGate = useRef<{ wait: Promise<void>; open: () => void } | null>(null);
+  if (!titleGate.current) {
+    let open = () => {};
+    const wait = new Promise<void>((r) => { open = r; });
+    titleGate.current = { wait, open };
+  }
+  const openTitleGate = useCallback(() => titleGate.current?.open(), []);
+  const closeTitle = useCallback(() => { titleGate.current?.open(); setShowTitle(false); }, []);
   const showTitleRef = useRef(true);
   showTitleRef.current = showTitle;
   const [camView, setCamView] = useState<CameraView>("chase");
@@ -374,7 +384,16 @@ export function RacingGame() {
         engine.resize(el.clientWidth, el.clientHeight);
 
         // 3D renderer draws the engine's state every frame.
-        void import("@/game/render3d").then(({ Scene3D }) => {
+        const lowPhone = phoneProfile({
+          userAgent: navigator.userAgent,
+          memory: (navigator as Navigator & { deviceMemory?: number }).deviceMemory,
+          cores: navigator.hardwareConcurrency || 4,
+          touch: navigator.maxTouchPoints > 0,
+        });
+        const gate = lowPhone && titleGate.current
+          ? Promise.race([titleGate.current.wait, new Promise<void>((r) => setTimeout(r, 12000))])
+          : Promise.resolve();
+        void gate.then(() => import("@/game/render3d")).then(({ Scene3D }) => {
           if (disposed || !canvas3dRef.current) return;
           const scene = new Scene3D(canvas3dRef.current, flashRef.current, () => {
             el.dataset["sceneReady"] = "true";
@@ -1340,7 +1359,7 @@ export function RacingGame() {
             CARREGANDO {carSpec(garage.selectedCar).name.toUpperCase()}…
           </div>
         )}
-        {showTitle && <TitleScreen prompt={t.pressToContinue} onContinue={closeTitle} />}
+        {showTitle && <TitleScreen prompt={t.pressToContinue} onContinue={closeTitle} onReady={openTitleGate} />}
       </div>
     </main>
   );

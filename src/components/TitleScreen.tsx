@@ -3,7 +3,9 @@ import gameLogo from "@/assets/brand/supercar-highway-dash-logo.webp.asset.json"
 import { uiSounds } from "@/game/ui-sounds";
 
 /** Forza-style attract screen: cinematic cars, small logo, "press to continue". */
-export function TitleScreen({ prompt, onContinue }: { prompt: string; onContinue: () => void }) {
+export function TitleScreen({ prompt, onContinue, onReady }: { prompt: string; onContinue: () => void; onReady?: () => void }) {
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fadeRef = useRef<HTMLDivElement>(null);
@@ -21,6 +23,7 @@ export function TitleScreen({ prompt, onContinue }: { prompt: string; onContinue
       scene = new TitleScene(canvas, fadeRef.current, () => {
         wrap.dataset["titleReady"] = "true";
         setReady(true);
+        onReadyRef.current?.();
       });
       scene.resize(wrap.clientWidth, wrap.clientHeight);
       if (import.meta.env.DEV) (window as Window & { __title?: unknown }).__title = scene;
