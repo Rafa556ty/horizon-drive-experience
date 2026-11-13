@@ -23,9 +23,9 @@ const SHOTS: Shot[] = [
   // low sideways dolly in front of the line-up
   { from: v(-7.5, 0.55, 6.5), to: v(6.5, 0.7, 7.2), lookFrom: v(-1, 0.6, -1), lookTo: v(1, 0.6, -1), fov: 32, dur: 9 },
   // slow push on the hero car's front three-quarter
-  { from: v(3.4, 0.9, 5.4), to: v(2.1, 0.75, 3.9), lookFrom: v(0, 0.55, 0), lookTo: v(0, 0.5, 0), fov: 28, dur: 8 },
+  { from: v(5.2, 1.0, 7.2), to: v(3.9, 0.85, 5.8), lookFrom: v(0, 0.6, 0), lookTo: v(0, 0.55, 0), fov: 28, dur: 8 },
   // high crane, sweeping over the overlook
-  { from: v(-10, 4.8, 8), to: v(-4, 3.2, 11), lookFrom: v(0, 0.4, -1.5), lookTo: v(0.5, 0.4, -1.5), fov: 38, dur: 9 },
+  { from: v(-9.5, 2.8, 8.5), to: v(-4.5, 2.1, 10.8), lookFrom: v(0, 1.0, -2), lookTo: v(0.5, 0.9, -2), fov: 38, dur: 9 },
   // into the sun: silhouettes and rim light
   { from: v(-6.5, 0.45, -8.5), to: v(-8.5, 0.6, -5.5), lookFrom: v(0.5, 0.7, -1), lookTo: v(0, 0.7, -1.5), fov: 34, dur: 8 },
   // ground-level detail past the Chiron
@@ -46,12 +46,12 @@ function radialTexture(stops: [number, string][], size = 256) {
 function grassTexture() {
   const c = document.createElement("canvas"); c.width = 128; c.height = 128;
   const g = c.getContext("2d")!;
-  for (let i = 0; i < 46; i++) {
-    const x = 20 + Math.random() * 88, lean = (Math.random() - 0.5) * 50, h = 50 + Math.random() * 74;
-    const tone = 120 + Math.random() * 80;
-    g.strokeStyle = `rgb(${tone + 50},${tone + 20},${tone * 0.45})`;
-    g.lineWidth = 1 + Math.random() * 2;
-    g.beginPath(); g.moveTo(x, 128); g.quadraticCurveTo(x + lean * 0.3, 128 - h * 0.6, x + lean, 128 - h); g.stroke();
+  for (let i = 0; i < 34; i++) {
+    const x = 30 + Math.random() * 68, lean = (Math.random() - 0.5) * 60, h = 45 + Math.random() * 80, w = 2 + Math.random() * 3;
+    const tone = 110 + Math.random() * 70;
+    g.fillStyle = `rgb(${tone + 60},${tone + 30},${tone * 0.4})`;
+    g.beginPath(); g.moveTo(x - w, 128); g.quadraticCurveTo(x + lean * 0.35, 128 - h * 0.55, x + lean, 128 - h);
+    g.quadraticCurveTo(x + lean * 0.35 + w * 0.5, 128 - h * 0.55, x + w, 128); g.closePath(); g.fill();
   }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
@@ -168,7 +168,7 @@ export class TitleScene {
 
     // Dry grass tufts (crossed cards).
     const grassTex = grassTexture();
-    const grassMat = new THREE.MeshStandardMaterial({ map: grassTex, alphaTest: 0.35, side: THREE.DoubleSide, roughness: 1, color: 0xf0d29a });
+    const grassMat = new THREE.MeshStandardMaterial({ map: grassTex, alphaTest: 0.35, side: THREE.DoubleSide, roughness: 1, color: 0xd9b57a });
     const card = new THREE.PlaneGeometry(1, 1); card.translate(0, 0.5, 0);
     const card2 = card.clone().rotateY(Math.PI / 2);
     const grassCount = this.low ? 260 : 620;
@@ -177,7 +177,7 @@ export class TitleScene {
     for (let i = 0; i < grassCount; i++) {
       const a = Math.random() * Math.PI * 2, d = 15 + Math.pow(Math.random(), 0.7) * 40;
       p.set(Math.cos(a) * d, 0, Math.sin(a) * d);
-      const h = 0.35 + Math.random() * 0.7;
+      const h = 0.25 + Math.random() * 0.5;
       sc.set(h * (0.8 + Math.random() * 0.6), h, 1);
       q.setFromEuler(e.set(0, Math.random() * 6, 0));
       m.compose(p, q, sc);
