@@ -52,3 +52,6 @@ use the editor.
 - Playable cars listed in `src/game/player-sounds.ts` play their own real recording (one looped sample, pitch by speed); cars absent there (Revuelto, Huracán EVO) use the layered Revuelto engine in audio.ts; credits in `public/game-assets/CREDITS.md`.
 - The SVJ engine (`src/game/svj-audio.ts`) uses a pitch-flattened gearless loop cut from its real recording plus real one-shot slices fired on game events (upshift, lift-off, brake, downshift); gears are heard only when the game shifts, never baked into a loop.
 - Media pointers imported from another project must be re-uploaded with `lovable-assets` into this project; foreign `/__l5e/assets-v1` pointers 404 here.
+- The attract/title screen is its own Three.js scene (`src/game/title-scene.ts`, mounted by `TitleScreen.tsx`) reusing the shared `loadCar` cache; the race engine sets `hidden` while it is up so only one 3D scene draws at a time.
+- Menu music, button clicks and the claim sound live in `src/game/ui-sounds.ts` (one shared instance); `wantsMenuMusic` decides when music plays, and clicks are fired from one capture handler on the game root rather than per button.
+- Claiming/selecting a car saves the garage instantly and swaps the 3D model in the background (`selectCar` never awaits `selectPlayerCar`); models are preloaded when the claim dialog opens.
