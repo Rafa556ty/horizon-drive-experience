@@ -284,7 +284,7 @@ export class TitleScene {
     }
     this.lastRender = now;
     // Hold on black until every car is on the GPU; the first shot then starts fresh.
-    if (!this.carsReady || !this.scene.background) {
+    if (!this.carsReady) {
       if (this.fade && this.fadeVal !== "1") { this.fadeVal = "1"; this.fade.style.opacity = "1"; }
       return;
     }

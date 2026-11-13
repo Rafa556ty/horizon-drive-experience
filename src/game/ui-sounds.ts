@@ -9,6 +9,7 @@ export type MusicState = { title: boolean; phase: "loading" | "menu" | "playing"
 export const wantsMenuMusic = (s: MusicState) => s.title || s.phase !== "playing";
 
 export const MUSIC_VOLUME = 0.55;
+export const MUSIC_FADE_OUT_MS = 600;
 export const CLICK_VOLUME = 0.35;
 export const BUY_VOLUME = 0.9;
 
@@ -19,10 +20,16 @@ class UiSounds {
   private muted = false;
   private wantMusic = false;
   private fadeRaf = 0;
+  private stopTimer: ReturnType<typeof setTimeout> | undefined;
 
   private ensure() {
     if (typeof window === "undefined") return;
     if (!this.music) {
+      // Pause the menu music whenever the app is in the background.
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) this.music?.pause();
+        else if (this.wantMusic && !this.muted) this.startMusic();
+      });
       const m = new Audio(musicAsset.url);
       m.loop = true; m.preload = "auto"; m.volume = 0;
       this.music = m;
@@ -59,14 +66,23 @@ class UiSounds {
   setMusic(on: boolean) {
     this.ensure();
     this.wantMusic = on;
-    if (on && !this.muted) this.startMusic();
-    else this.fadeTo(0, 700, () => this.music?.pause());
+    clearTimeout(this.stopTimer);
+    if (on && !this.muted) { this.startMusic(); return; }
+    this.fadeTo(0, MUSIC_FADE_OUT_MS);
+    // Hard stop on a timer, not the fade: a busy race start can starve
+    // animation frames, and phones may ignore volume changes entirely.
+    this.stopTimer = setTimeout(() => { if (!this.wantMusic) this.music?.pause(); }, MUSIC_FADE_OUT_MS + 50);
   }
 
   private startMusic() {
     const m = this.music;
-    if (!m) return;
-    if (m.paused) m.play().catch(() => { /* blocked until the first tap/key */ });
+    if (!m || document.hidden) return;
+    if (m.paused) {
+      m.play()
+        // a slow phone may finish starting playback after the race began
+        .then(() => { if (!this.wantMusic || this.muted) m.pause(); })
+        .catch(() => { /* blocked until the first tap/key */ });
+    }
     this.fadeTo(MUSIC_VOLUME, 1200);
   }
 
@@ -138,4 +154,7 @@ class UiSounds {
   }
 }
 
-export const uiSounds = new UiSounds();
+// One instance for the page's lifetime, even across dev hot reloads, so an old
+// copy can never keep the menu music playing during a race.
+const g = globalThis as typeof globalThis & { __uiSounds?: UiSounds };
+export const uiSounds: UiSounds = g.__uiSounds ?? (g.__uiSounds = new UiSounds());
