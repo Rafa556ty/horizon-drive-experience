@@ -190,6 +190,8 @@ export function RacingGame() {
   const [isPaused, setIsPaused] = useState(false);
   const [showTitle, setShowTitle] = useState(true);
   const closeTitle = useCallback(() => setShowTitle(false), []);
+  const showTitleRef = useRef(true);
+  showTitleRef.current = showTitle;
   const [camView, setCamView] = useState<CameraView>("chase");
 
   const cycleCamera = useCallback(() => {
@@ -352,6 +354,7 @@ export function RacingGame() {
         );
 
         engineRef.current = engine;
+        engine.hidden = showTitleRef.current;
         if (import.meta.env.DEV) {
           (window as Window & { __game?: unknown }).__game = {
             get state() {
@@ -484,6 +487,9 @@ export function RacingGame() {
     audioRef.current?.setMuted(m);
     uiSounds.setMuted(m);
   };
+
+  // The title screen has its own 3D scene; pause the game's drawing behind it.
+  useEffect(() => { if (engineRef.current) engineRef.current.hidden = showTitle; }, [showTitle, phase]);
 
   // Menu music: title screen and menus only, fades out when the race starts.
   const musicOn = wantsMenuMusic({ title: showTitle, phase });

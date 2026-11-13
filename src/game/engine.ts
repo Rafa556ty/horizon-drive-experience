@@ -221,6 +221,8 @@ export type RenderSnapshot = {
 export class RacingEngine {
   /** When set, the 2D canvas renderer is skipped and this draws the frame instead (3D mode). */
   onRender?: (s: RenderSnapshot) => void;
+  /** Skip simulation + drawing while another full-screen scene (title) covers the game. */
+  hidden = false;
   private threeD = false;
   private ctx: CanvasRenderingContext2D;
   private W = 0;
@@ -514,7 +516,7 @@ export class RacingEngine {
       const dt = this.last ? Math.min((now - this.last) / 1000, 0.05) : 0.016;
       this.last = now;
       this.raf = requestAnimationFrame(loop);
-      if (!this.W || !this.H) return;
+      if (!this.W || !this.H || this.hidden) return;
       try {
         this.update(dt);
         if (this.onRender) this.onRender(this.snapshot(dt));
