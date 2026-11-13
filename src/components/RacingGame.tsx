@@ -47,6 +47,8 @@ import { GarageViewer } from "@/components/GarageViewer";
 import { DEFAULT_GARAGE, claimCar, choosePlayerCar, isOwned, carSpec, loadGarage, saveGarage, type PlayerCar, type GarageState } from "@/game/player-cars";
 import { CarStore } from '@/components/CarStore';
 import { SpeedCluster } from '@/components/SpeedCluster';
+import { TitleScreen } from "@/components/TitleScreen";
+import { uiSounds, wantsMenuMusic } from "@/game/ui-sounds";
 import { GameAudio } from "@/game/audio";
 import {
   MAX_SPEED,
@@ -127,19 +129,31 @@ export function RacingGame() {
       .finally(() => { if (!cancelled) setGarageBusy(false); });
     return () => { cancelled = true; };
   }, []);
-  const selectCar = async (car: PlayerCar, confirmed = false) => {
+  const [carLoading, setCarLoading] = useState(false);
+  // Download the model in the background as soon as the player looks at a car,
+  // so confirming the claim doesn't wait on a 10–20 MB file.
+  const preloadCar = (car: PlayerCar) => {
+    void import("@/game/models3d").then(({ loadCar }) => loadCar(car)).catch(() => {});
+  };
+  const selectCar = (car: PlayerCar, confirmed = false) => {
     if (garageBusy) return;
-    if (!isOwned(garage, car) && !confirmed) { setConfirmClaim(car); return; }
-    setGarageBusy(true); setGarageError("");
+    if (!isOwned(garage, car) && !confirmed) { preloadCar(car); setConfirmClaim(car); return; }
+    setGarageError("");
+    let saved: GarageState;
     try {
-      const saved = confirmed ? claimCar(garage, car, true) : choosePlayerCar(garage, car);
+      saved = confirmed ? claimCar(garage, car, true) : choosePlayerCar(garage, car);
       saveGarage(localStorage, saved);
-      await scene3dRef.current?.selectPlayerCar(saved.selectedCar);
-      selectedCarRef.current = saved.selectedCar;
-      audioRef.current?.setPlayerCar(saved.selectedCar);
-      setGarage(saved); setConfirmClaim(null);
-    } catch (e) { setGarageError(e instanceof Error ? e.message : "Não foi possível salvar. Tente novamente."); }
-    finally { setGarageBusy(false); }
+    } catch (e) { setGarageError(e instanceof Error ? e.message : "Não foi possível salvar. Tente novamente."); return; }
+    // Claim/selection is saved instantly; the 3D model swaps in when it has loaded.
+    if (confirmed && !isOwned(garage, car) && isOwned(saved, car)) uiSounds.purchase();
+    selectedCarRef.current = saved.selectedCar;
+    audioRef.current?.setPlayerCar(saved.selectedCar);
+    setGarage(saved); setConfirmClaim(null);
+    setCarLoading(true);
+    const target = saved.selectedCar;
+    Promise.resolve(scene3dRef.current?.selectPlayerCar(target))
+      .catch(() => setGarageError("Não foi possível carregar o carro. Tente novamente."))
+      .finally(() => { if (selectedCarRef.current === target) setCarLoading(false); });
   };
   const [phase, setPhase] = useState<Phase>("loading");
   const [mode, setMode] = useState<"free" | "police">("free");
@@ -174,6 +188,8 @@ export function RacingGame() {
   } | null>(null);
   const [muted, setMuted] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
+  const [showTitle, setShowTitle] = useState(true);
+  const closeTitle = useCallback(() => setShowTitle(false), []);
   const [camView, setCamView] = useState<CameraView>("chase");
 
   const cycleCamera = useCallback(() => {
@@ -466,6 +482,18 @@ export function RacingGame() {
     const m = !muted;
     setMuted(m);
     audioRef.current?.setMuted(m);
+    uiSounds.setMuted(m);
+  };
+
+  // Menu music: title screen and menus only, fades out when the race starts.
+  const musicOn = wantsMenuMusic({ title: showTitle, phase });
+  useEffect(() => { uiSounds.setMusic(musicOn); }, [musicOn]);
+  useEffect(() => () => uiSounds.setMusic(false), []);
+  // Button click sound in menus, pause screen, store and garage.
+  const menuClick = (e: RMouseEvent) => {
+    const btn = (e.target as Element).closest("button, [role=tab]");
+    if (!btn || (btn as HTMLButtonElement).disabled) return;
+    if (phase !== "playing" || isPaused || btn.hasAttribute("data-ui-sound") || showGarage || showPoliceOff) uiSounds.click();
   };
 
   const press = (key: Key) => {
@@ -523,7 +551,8 @@ export function RacingGame() {
       )}
       style={rotated ? rotatedFrame(screenSize) : undefined}
       data-phone-rotated={rotated ? "" : undefined}
-      onPointerDown={() => audioRef.current?.unlock()}
+      onPointerDown={() => { audioRef.current?.unlock(); uiSounds.unlock(); }}
+      onClickCapture={menuClick}
     >
       <div
         ref={containerRef}
@@ -562,6 +591,7 @@ export function RacingGame() {
                   size="icon"
                   className="pointer-events-auto h-10 w-10 border border-hud-border bg-hud text-foreground hover:bg-secondary/70 shadow-md"
                   onClick={togglePause}
+                  data-ui-sound
                   aria-label={isPaused ? "Continuar" : "Pausar"}
                 >
                   {isPaused ? (
@@ -834,6 +864,15 @@ export function RacingGame() {
 
         {/* Main Menu Screen (Requirements 6, 7, 10, 11) */}
         {phase === "menu" && (
+          <img
+            src={gameLogo.url}
+            alt="Supercar Highway Dash"
+            width={680}
+            height={540}
+            className="title-logo pointer-events-none absolute left-[max(env(safe-area-inset-left),16px)] top-[max(env(safe-area-inset-top),12px)] z-[31] h-14 w-auto sm:h-16"
+          />
+        )}
+        {phase === "menu" && (
           <div
             className={cn(
               "absolute inset-0 z-30 flex flex-col overflow-y-auto",
@@ -872,13 +911,6 @@ export function RacingGame() {
               </div>
 
               <h1 className="sr-only">Supercar Highway Dash</h1>
-              <img
-                src={gameLogo.url}
-                alt="Supercar Highway Dash"
-                width={680}
-                height={540}
-                className={cn("mx-auto w-auto drop-shadow-[0_6px_24px_var(--color-primary)]", landscape ? "h-36" : "h-48")}
-              />
             </div>
 
             {/* Menu Options & Mode Selector */}
@@ -1171,7 +1203,7 @@ export function RacingGame() {
             selectedCar={garage.selectedCar}
             owned={garage.owned}
             busy={garageBusy}
-            onSelect={car => { void selectCar(car); }}
+            onSelect={car => { selectCar(car); }}
             onClose={() => { setShowGarage(false); scene3dRef.current?.refreshCarCustom(); }}
           />
         )}
@@ -1199,7 +1231,7 @@ export function RacingGame() {
         )}
 
         {/* Requirement 10: Language Selection Dialog (First Visit or from Menu Settings) */}
-        {(showFirstLangModal || showSettingsModal) && (
+        {!showTitle && (showFirstLangModal || showSettingsModal) && (
           <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/85 px-4">
             <div className="corner-cut border border-hud-border bg-card p-5 w-full max-w-sm shadow-2xl animate-rise-in">
               <div className="flex items-center justify-between pb-3 border-b border-border">
@@ -1289,14 +1321,20 @@ export function RacingGame() {
               <Car className="mx-auto size-9 text-primary" />
               <h3 className="mt-3 font-display text-3xl">RESGATAR {carSpec(confirmClaim).name.toUpperCase()}?</h3>
               <p className="mt-3 text-sm text-muted-foreground">Você realmente quer resgatar esse carro gratuitamente? Promoção por tempo limitado.</p>
-              <Button variant="race" disabled={garageBusy} className="mt-5 w-full" onClick={() => { void selectCar(confirmClaim, true); }}>{garageBusy ? "RESGATANDO…" : "SIM, RESGATAR"}</Button>
+              <Button variant="race" disabled={garageBusy} className="mt-5 w-full" onClick={() => { selectCar(confirmClaim, true); }}>SIM, RESGATAR</Button>
               <Button variant="ghost" disabled={garageBusy} className="mt-2 w-full" onClick={() => setConfirmClaim(null)}>CANCELAR</Button>
             </div>
           </div>
         )}
         {showPoliceOff && (
-          <CarStore garage={garage} busy={garageBusy} onClaim={car => { void selectCar(car); }} onClose={() => setShowPoliceOff(false)} />
+          <CarStore garage={garage} busy={garageBusy} onClaim={car => { selectCar(car); }} onClose={() => setShowPoliceOff(false)} />
         )}
+        {carLoading && !showTitle && (
+          <div role="status" className="pointer-events-none absolute bottom-4 left-1/2 z-[75] -translate-x-1/2 border border-hud-border bg-hud px-4 py-2 font-display text-sm tracking-widest text-foreground">
+            CARREGANDO {carSpec(garage.selectedCar).name.toUpperCase()}…
+          </div>
+        )}
+        {showTitle && <TitleScreen prompt={t.pressToContinue} onContinue={closeTitle} />}
       </div>
     </main>
   );
