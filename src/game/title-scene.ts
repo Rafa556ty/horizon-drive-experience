@@ -43,19 +43,6 @@ function radialTexture(stops: [number, string][], size = 256) {
   return new THREE.CanvasTexture(c);
 }
 
-function grassTexture() {
-  const c = document.createElement("canvas"); c.width = 128; c.height = 128;
-  const g = c.getContext("2d")!;
-  for (let i = 0; i < 34; i++) {
-    const x = 30 + Math.random() * 68, lean = (Math.random() - 0.5) * 60, h = 45 + Math.random() * 80, w = 2 + Math.random() * 3;
-    const tone = 110 + Math.random() * 70;
-    g.fillStyle = `rgb(${tone + 60},${tone + 30},${tone * 0.4})`;
-    g.beginPath(); g.moveTo(x - w, 128); g.quadraticCurveTo(x + lean * 0.35, 128 - h * 0.55, x + lean, 128 - h);
-    g.quadraticCurveTo(x + lean * 0.35 + w * 0.5, 128 - h * 0.55, x + w, 128); g.closePath(); g.fill();
-  }
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
-}
-
 export class TitleScene {
   private renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
@@ -148,43 +135,23 @@ export class TitleScene {
     this.own.push(dirt, bump, fadeTex, groundMat, groundGeo);
 
     // Rocks.
-    const rockGeo = new THREE.IcosahedronGeometry(1, 1);
+    const rockGeo = new THREE.IcosahedronGeometry(1, 3);
     const rp = rockGeo.attributes["position"] as THREE.BufferAttribute;
-    for (let i = 0; i < rp.count; i++) { const k = 0.75 + Math.random() * 0.5; rp.setXYZ(i, rp.getX(i) * k, rp.getY(i) * k * 0.7, rp.getZ(i) * k); }
+    for (let i = 0; i < rp.count; i++) { const k = 0.88 + Math.random() * 0.24; rp.setXYZ(i, rp.getX(i) * k, rp.getY(i) * k * 0.45, rp.getZ(i) * k); }
     rockGeo.computeVertexNormals();
-    const rockMat = new THREE.MeshStandardMaterial({ map: dirt, color: 0xb7a58e, roughness: 0.92, flatShading: true });
-    const rocks = new THREE.InstancedMesh(rockGeo, rockMat, 46);
+    const rockMat = new THREE.MeshStandardMaterial({ map: dirt, color: 0xb7a58e, roughness: 0.92 });
+    const rocks = new THREE.InstancedMesh(rockGeo, rockMat, 22);
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), sc = new THREE.Vector3(), p = new THREE.Vector3();
     for (let i = 0; i < rocks.count; i++) {
       const a = Math.random() * Math.PI * 2, d = 14 + Math.random() * 26;
       p.set(Math.cos(a) * d, 0, Math.sin(a) * d);
-      const size = 0.12 + Math.random() * (d > 15 ? 1.1 : 0.45);
+      const size = 0.15 + Math.random() * 0.6;
       sc.set(size, size, size); p.y = -size * 0.25;
       q.setFromEuler(e.set(Math.random(), Math.random() * 6, Math.random()));
       rocks.setMatrixAt(i, m.compose(p, q, sc));
     }
     rocks.castShadow = rocks.receiveShadow = true; s.add(rocks);
     this.own.push(rockGeo, rockMat);
-
-    // Dry grass tufts (crossed cards).
-    const grassTex = grassTexture();
-    const grassMat = new THREE.MeshStandardMaterial({ map: grassTex, alphaTest: 0.35, side: THREE.DoubleSide, roughness: 1, color: 0xd9b57a });
-    const card = new THREE.PlaneGeometry(1, 1); card.translate(0, 0.5, 0);
-    const card2 = card.clone().rotateY(Math.PI / 2);
-    const grassCount = this.low ? 260 : 620;
-    const g1 = new THREE.InstancedMesh(card, grassMat, grassCount);
-    const g2 = new THREE.InstancedMesh(card2, grassMat, grassCount);
-    for (let i = 0; i < grassCount; i++) {
-      const a = Math.random() * Math.PI * 2, d = 15 + Math.pow(Math.random(), 0.7) * 40;
-      p.set(Math.cos(a) * d, 0, Math.sin(a) * d);
-      const h = 0.25 + Math.random() * 0.5;
-      sc.set(h * (0.8 + Math.random() * 0.6), h, 1);
-      q.setFromEuler(e.set(0, Math.random() * 6, 0));
-      m.compose(p, q, sc);
-      g1.setMatrixAt(i, m); g2.setMatrixAt(i, m);
-    }
-    s.add(g1, g2);
-    this.own.push(grassTex, grassMat, card, card2);
 
     // Floating dust in the sunlight.
     const dustCount = this.low ? 160 : 360;
