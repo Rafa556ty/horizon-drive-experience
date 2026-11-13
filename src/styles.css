@@ -237,3 +237,35 @@
 @utility animate-pulse-soft {
   animation: pulse-soft 1.6s ease-in-out infinite;
 }
+
+/* Title screen (Forza-style attract mode) */
+:root {
+  --title-ink: oklch(0.98 0.01 80);
+  --title-glow: 0 0 18px oklch(0.85 0.12 70 / 0.65), 0 2px 6px oklch(0.1 0.01 40 / 0.9);
+  --title-vignette: radial-gradient(ellipse at center, oklch(0 0 0 / 0) 55%, oklch(0.08 0.01 40 / 0.6) 100%);
+  --title-letterbox: oklch(0.05 0.005 40);
+  --title-rule: linear-gradient(90deg, oklch(1 0 0 / 0), oklch(0.9 0.1 70 / 0.85), oklch(1 0 0 / 0));
+}
+@utility title-vignette {
+  background: var(--title-vignette);
+}
+@utility title-letterbox {
+  background: var(--title-letterbox);
+}
+@utility title-rule {
+  background: var(--title-rule);
+}
+@utility title-prompt {
+  color: var(--title-ink);
+  text-shadow: var(--title-glow);
+}
+@utility title-logo {
+  filter: drop-shadow(0 4px 14px oklch(0.1 0.01 40 / 0.8));
+}
+@keyframes title-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+@utility animate-title-blink {
+  animation: title-blink 1.8s ease-in-out infinite;
+}
