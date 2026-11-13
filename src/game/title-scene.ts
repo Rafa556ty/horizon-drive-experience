@@ -225,6 +225,10 @@ export class TitleScene {
     this.camera.updateProjectionMatrix();
   }
 
+  /** Dev/test: hold one camera shot at progress t (0..1); null resumes. */
+  hold: { shot: number; t: number } | null = null;
+  get shotCount() { return SHOTS.length; }
+
   private lookTmp = new THREE.Vector3();
   private loop(now: number) {
     if (this.disposed) return;
@@ -233,6 +237,7 @@ export class TitleScene {
     let shot = SHOTS[this.shot]!;
     let t = (now - this.shotStart) / 1000 / shot.dur;
     if (t >= 1) { this.shot = (this.shot + 1) % SHOTS.length; this.shotStart = now; shot = SHOTS[this.shot]!; t = 0; }
+    if (this.hold) { shot = SHOTS[this.hold.shot % SHOTS.length]!; t = this.hold.t; }
     // fade to black around each cut
     if (this.fade) {
       const secs = t * shot.dur, left = shot.dur - secs;

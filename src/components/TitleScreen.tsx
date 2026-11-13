@@ -23,6 +23,7 @@ export function TitleScreen({ prompt, onContinue }: { prompt: string; onContinue
         setReady(true);
       });
       scene.resize(wrap.clientWidth, wrap.clientHeight);
+      if (import.meta.env.DEV) (window as Window & { __title?: unknown }).__title = scene;
       ro = new ResizeObserver(() => scene?.resize(wrap.clientWidth, wrap.clientHeight));
       ro.observe(wrap);
     });
